@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<itop_design xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.0">
+  <classes>
+    <class id="WorkOrder" _delta="must_exist">
+      <fields>
+        <field id="ews_calendar_event" xsi:type="AttributeEnum" _delta="define">
+          <values>
+            <value id="0">No</value>
+            <value id="1">Yes</value>
+          </values>
+          <sql>ews_calendar_event</sql>
+          <default_value>No</default_value>
+          <is_null_allowed>true</is_null_allowed>
+          <display_style>list</display_style>
+        </field>        
+        <field id="ews_event_id" xsi:type="AttributeString" _delta="define">
+          <sql>ews_event_id</sql>
+          <default_value/>
+          <is_null_allowed>true</is_null_allowed>
+        </field>
+        <field id="ews_change_key" xsi:type="AttributeString" _delta="define">
+          <sql>ews_change_key</sql>
+          <default_value/>
+          <is_null_allowed>true</is_null_allowed>
+        </field>
+      </fields>
+      <methods>
+        <method id="OnUpdate" _delta="redefine">
+          <static>false</static>
+          <access>protected</access>
+          <type>Overload-DBObject</type>
+          <code>
+            <![CDATA[
+              protected function OnUpdate()
+              {
+                
+                if ( $this->Get('ews_calendar_event') == 'No' && $this->Get('ews_event_id') && $this->Get('ews_change_key') ){ 
+                    
+                    $phpews = new phpews();
+                    $phpews->deleteEvent($this->Get('ews_event_id'), $this->Get('ews_change_key'));
+                    $this->Set('ews_event_id', null); 
+                    $this->Set('ews_change_key', null); 
+                    
+                } elseif ( $this->Get('ews_calendar_event') == 'Yes' ) {
+                
+                    if ( $this->Get('agent_id') ) {
+                         $oSet = new DBObjectSet(DBSearch::FromOQL('SELECT Person WHERE id = :person', array('person' => $this->Get('agent_id') )));
+                         $oSet->OptimizeColumnLoad(array('friendlyname', 'email'));
+                         while($oPerson = $oSet->Fetch())
+                            {
+                                $attendee[] = array(
+                                    'email' => $oPerson->Get('email'),
+                                    'name' => $oPerson->Get('name')
+                                );
+                            }   
+                    } else {
+                        $oSet = new DBObjectSet(DBSearch::FromOQL('SELECT Person AS p JOIN lnkPersonToTeam AS l1 ON l1.person_id=p.id JOIN Team AS t ON l1.team_id=t.id WHERE t.id = :team', array('team' => $this->Get('team_id') )));
+                        $oSet->OptimizeColumnLoad(array('friendlyname', 'email'));
+                         while($oPerson = $oSet->Fetch())
+                            {
+                                $attendee[] = array(
+                                    'email' => $oPerson->Get('email'),
+                                    'name' => $oPerson->Get('name')
+                                );
+                            } 
+                    }
+                    
+                    $name = $this->Get('ticket_ref')." - ". $this->Get('name');
+                    
+                    if ( $this->Get('ews_event_id') && $this->Get('ews_change_key') ) {
+                            $phpews = new phpews();
+                            if ( $CalendarItemType = $phpews->updateEvent($this->Get('ews_event_id'),$this->Get('ews_change_key'), $this->Get('start_date'), $this->Get('end_date'), $attendee, $name, $this->Get('description')) ){
+
+                                $this->Set('ews_event_id',$CalendarItemType->ItemId->Id);
+                                $this->Set('ews_change_key',$CalendarItemType->ItemId->ChangeKey);
+
+                            } else {
+                                // Have to trace something ...
+                            }
+                    } else {
+                            $phpews = new phpews();
+                            if ( $CalendarItemType = $phpews->createEvent($this->Get('start_date'), $this->Get('end_date'), $attendee, $name, $this->Get('description')) ){
+
+                                $this->Set('ews_event_id',$CalendarItemType->ItemId->Id);
+                                $this->Set('ews_change_key',$CalendarItemType->ItemId->ChangeKey);
+
+                            } else {
+                                // Have to trace something ...
+                            }
+
+                    }
+
+                    
+                    
+                } 
+                
+              }
+            ]]>
+          </code>
+        </method>          
+        <method id="OnInsert" _delta="define">
+          <static>false</static>
+          <access>protected</access>
+          <type>Overload-DBObject</type>
+          <code>
+            <![CDATA[
+              protected function OnInsert()
+              {
+
+                
+                $name = $this->Get('ticket_ref')." - ". $this->Get('name');
+                
+                if ( $this->Get('ews_calendar_event') == 'Yes' ){
+                
+                    if ( $this->Get('agent_id') ) {
+                         $oSet = new DBObjectSet(DBSearch::FromOQL('SELECT Person WHERE id = :person', array('person' => $this->Get('agent_id') )));
+                         $oSet->OptimizeColumnLoad(array('friendlyname', 'email'));
+                         while($oPerson = $oSet->Fetch())
+                            {
+                                $attendee[] = array(
+                                    'email' => $oPerson->Get('email'),
+                                    'name' => $oPerson->Get('name')
+                                );
+                            }   
+                    } else {
+                         $oSet = new DBObjectSet(DBSearch::FromOQL('SELECT Person AS p JOIN lnkPersonToTeam AS l1 ON l1.person_id=p.id JOIN Team AS t ON l1.team_id=t.id WHERE t.id = :team', array('team' => $this->Get('team_id') )));
+                         $oSet->OptimizeColumnLoad(array('friendlyname', 'email'));
+                         while($oPerson = $oSet->Fetch())
+                            {
+                                $attendee[] = array(
+                                    'email' => $oPerson->Get('email'),
+                                    'name' => $oPerson->Get('name')
+                                );
+                            } 
+                    }
+                            
+                    $phpews = new phpews();
+                    if ( $CalendarItemType = $phpews->createEvent($this->Get('start_date'), $this->Get('end_date'), $attendee, $name, $this->Get('description')) ){
+
+                        $this->Set('ews_event_id',$CalendarItemType->ItemId->Id);
+                        $this->Set('ews_change_key',$CalendarItemType->ItemId->ChangeKey);
+
+                    } else {
+                        // Have to trace something ...
+                    }
+                }
+                
+                
+
+              }
+            ]]>
+          </code>
+        </method> 
+        <method id="OnDelete" _delta="define">
+          <static>false</static>
+          <access>protected</access>
+          <type>Overload-DBObject</type>
+          <code>
+            <![CDATA[
+              protected function OnDelete()
+              {
+                $this->Get('ews_calendar_event');
+                $phpews = new phpews();
+                if ( $phpews->deleteEvent($this->Get('ews_event_id'), $this->Get('ews_change_key')) ) {
+
+                } else {
+                    
+                }
+                
+              }
+            ]]>
+          </code>
+        </method>          
+      </methods>
+      <presentation>
+        <details>
+          <items>
+            <item id="ews_calendar_event">
+              <rank>11</rank>
+            </item>
+          </items>
+        </details>
+        <search>
+          <items>
+          </items>
+        </search>
+        <list>
+          <items>
+          </items>
+        </list>
+      </presentation>
+    </class>
+</classes>
+</itop_design>
+
